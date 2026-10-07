@@ -5,8 +5,6 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.connectors.redis.RedisSink;
-import org.apache.flink.streaming.connectors.redis.common.config.FlinkJedisPoolConfig;
 
 import java.net.InetSocketAddress;
 import java.util.Arrays;
@@ -25,8 +23,7 @@ public class RedisConnector {
             }
         });
 
-        FlinkJedisPoolConfig conf = new FlinkJedisPoolConfig.Builder().setHost("localhost").setPort(6379).build();
-        stream.addSink(new RedisSink<>(conf, new RedisSink02()));
+        stream.sinkTo(new RedisSinkV2<>("localhost", 6379, new RedisSink02()));
         env.execute("redis sink01");
     }
 }

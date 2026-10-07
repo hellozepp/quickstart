@@ -30,11 +30,38 @@ under the License.
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<flink.version>1.10.0</flink.version>
-		<java.version>1.8</java.version>
-		<scala.binary.version>2.11</scala.binary.version>
+
+		<!--
+			运行环境：JDK 17，与 clickzetta-flinkx-src 保持一致。
+
+			Flink 1.15 官方只声明支持 Java 8/11，在 JDK 17 上直接运行作业会因为模块化
+			反射限制抛 InaccessibleObjectException，需要给 JVM 开放下面这些模块
+			（见 java17.jvm.args，mvn test 时由 surefire 自动使用）。
+
+			命令行手动运行时，把 ${java17.jvm.args} 里的参数原样加到 java 命令里即可，
+			FlinkX 运行时的启动脚本已经带了这些参数，集群上不需要额外处理。
+		-->
+		<java.version>17</java.version>
 		<maven.compiler.source>${java.version}</maven.compiler.source>
 		<maven.compiler.target>${java.version}</maven.compiler.target>
+		<maven.compiler.release>${java.version}</maven.compiler.release>
+
+		<!-- JDK 17 下运行 Flink 1.15 作业所需的 JVM 模块开放参数 -->
+		<java17.jvm.args>--add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED</java17.jvm.args>
+
+		<!-- 与 clickzetta-flinkx-src 使用的 Flink 大版本保持一致：1.15.3 -->
+		<flink.version>1.15.3</flink.version>
+		<hadoop.version>3.3.4</hadoop.version>
+		<hbase.version>2.4.17</hbase.version>
+		<mysql.version>8.0.28</mysql.version>
+
+		<slf4j.version>1.7.32</slf4j.version>
+		<log4j.version>2.17.1</log4j.version>
+		<fastjson.version>1.2.83</fastjson.version>
+		<gson.version>2.10.1</gson.version>
+		<guava.version>31.1-jre</guava.version>
+		<jedis.version>4.4.6</jedis.version>
+		<commons.lang3.version>3.12.0</commons.lang3.version>
 	</properties>
 
 	<repositories>
@@ -52,74 +79,112 @@ under the License.
 	</repositories>
 
 	<dependencies>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-java</artifactId>
-            <version>${flink.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
-            <version>${flink.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-table-api-java-bridge_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-table-planner-blink_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-jdbc_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
-        <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>5.1.46</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-table-planner_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-table-api-scala-bridge_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
+		<!-- ==================== Flink 核心 ==================== -->
 		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-log4j12</artifactId>
-			<version>1.7.7</version>
-		</dependency>
-		<dependency>
-			<groupId>log4j</groupId>
-			<artifactId>log4j</artifactId>
-			<version>1.2.17</version>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-java</artifactId>
+			<version>${flink.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-cep_2.11</artifactId>
-			<version>1.10.0</version>
+			<artifactId>flink-streaming-java</artifactId>
+			<version>${flink.version}</version>
 		</dependency>
-		<!-- https://mvnrepository.com/artifact/com.alibaba/fastjson -->
+		<!-- 本地执行环境（StreamExecutionEnvironment.createLocalEnvironment 等） -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-clients</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+
+		<!-- ==================== Flink Table / SQL ==================== -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-table-api-java-bridge</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+		<!-- Flink 1.15 只有 Blink planner，并且通过 loader 隔离 Scala 版本 -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-table-planner-loader</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-table-runtime</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+
+		<!-- ==================== Flink 连接器 ==================== -->
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-connector-kafka</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-connector-jdbc</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-cep</artifactId>
+			<version>${flink.version}</version>
+		</dependency>
+		<!-- ==================== 数据库 / 存储 ==================== -->
+		<dependency>
+			<groupId>mysql</groupId>
+			<artifactId>mysql-connector-java</artifactId>
+			<version>${mysql.version}</version>
+		</dependency>
+		<!-- HBase 1.2 在 JDK 17 下会有反射/模块化问题，这里升级到 2.x -->
+		<dependency>
+			<groupId>org.apache.hbase</groupId>
+			<artifactId>hbase-client</artifactId>
+			<version>${hbase.version}</version>
+		</dependency>
+		<!-- 异步 HBase 客户端（Dim19/LRU 使用），没有 JDK 17 友好的新版本 -->
+		<dependency>
+			<groupId>org.hbase</groupId>
+			<artifactId>asynchbase</artifactId>
+			<version>1.8.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.hadoop</groupId>
+			<artifactId>hadoop-common</artifactId>
+			<version>${hadoop.version}</version>
+			<exclusions>
+				<!--
+					Hadoop 3.3.4 自带 log4j1(slf4j-reload4j) 绑定，和 Flink 1.15 的 log4j2 绑定
+					同时存在会导致 SLF4J 找到多个 binding，甚至 log4j1 与 log4j-over-slf4j 互相代理。
+				-->
+				<exclusion>
+					<groupId>org.slf4j</groupId>
+					<artifactId>slf4j-reload4j</artifactId>
+				</exclusion>
+				<exclusion>
+					<groupId>ch.qos.reload4j</groupId>
+					<artifactId>reload4j</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<!-- ==================== 工具库 ==================== -->
 		<dependency>
 			<groupId>com.alibaba</groupId>
 			<artifactId>fastjson</artifactId>
-			<version>1.2.71</version>
+			<version>${fastjson.version}</version>
 		</dependency>
-        <dependency>
-            <groupId>org.hbase</groupId>
-            <artifactId>asynchbase</artifactId>
-            <version>1.8.2</version>
-        </dependency>
-		<!--hyperloglog-->
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>${gson.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>${guava.version}</version>
+		</dependency>
 		<dependency>
 			<groupId>net.agkn</groupId>
 			<artifactId>hll</artifactId>
@@ -130,72 +195,67 @@ under the License.
 			<artifactId>RoaringBitmap</artifactId>
 			<version>0.8.0</version>
 		</dependency>
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-connector-kafka_2.11</artifactId>
-            <version>1.10.0</version>
-        </dependency>
-		<!--<dependency>-->
-			<!--<groupId>redis.clients</groupId>-->
-			<!--<artifactId>jedis</artifactId>-->
-			<!--<version>2.8.2</version>-->
-		<!--</dependency>-->
 		<dependency>
-			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-connector-redis_2.11</artifactId>
-			<version>1.1.5</version>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>${commons.lang3.version}</version>
 		</dependency>
-		<!--<dependency>-->
-			<!--<groupId>org.apache.bahir</groupId>-->
-			<!--<artifactId>flink-connector-redis_2.11</artifactId>-->
-			<!--<version>1.0</version>-->
-		<!--</dependency>-->
+		<!-- Redis 客户端：Flink 官方没有 1.15 可用的 Redis 连接器，这里用 Sink V2 自己实现 -->
+		<dependency>
+			<groupId>redis.clients</groupId>
+			<artifactId>jedis</artifactId>
+			<version>${jedis.version}</version>
+		</dependency>
 
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-connector-jdbc_2.11</artifactId>
-            <version>1.11.0</version>
-        </dependency>
-
-        //habse 依赖
-        <dependency>
-            <groupId>org.apache.hbase</groupId>
-            <artifactId>hbase-client</artifactId>
-            <version>1.2.6.1</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-common</artifactId>
-            <version>2.7.5</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.8.5</version>
-        </dependency>
+		<!-- ==================== 日志（与 Flink 1.15.3 保持一致） ==================== -->
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>${slf4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-slf4j-impl</artifactId>
+			<version>${log4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.logging.log4j</groupId>
+			<artifactId>log4j-core</artifactId>
+			<version>${log4j.version}</version>
+		</dependency>
 	</dependencies>
 
 	<build>
 		<plugins>
 
-			<!-- Java Compiler -->
+			<!-- Java Compiler：JDK 17 -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.1</version>
+				<version>3.11.0</version>
 				<configuration>
-					<source>${java.version}</source>
-					<target>${java.version}</target>
+					<release>${java.version}</release>
+					<encoding>${project.build.sourceEncoding}</encoding>
+				</configuration>
+			</plugin>
+
+			<!-- 让单元测试/集成测试在 JDK 17 下也能启动 Flink MiniCluster -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.1.2</version>
+				<configuration>
+					<argLine>${java17.jvm.args}</argLine>
 				</configuration>
 			</plugin>
 
 			<!-- We use the maven-shade plugin to create a fat jar that contains all necessary dependencies. -->
 			<!-- Change the value of <mainClass>...</mainClass> if your program entry point changes. -->
+			<!-- 注意：3.1.1 的 ASM 读不了 JDK 17 的 class 文件（major 61），必须升级 -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
-				<version>3.1.1</version>
+				<version>3.5.1</version>
 				<executions>
 					<!-- Run shade goal on package phase -->
 					<execution>
@@ -209,7 +269,7 @@ under the License.
 									<exclude>org.apache.flink:force-shading</exclude>
 									<exclude>com.google.code.findbugs:jsr305</exclude>
 									<exclude>org.slf4j:*</exclude>
-									<exclude>log4j:*</exclude>
+									<exclude>org.apache.logging.log4j:*</exclude>
 								</excludes>
 							</artifactSet>
 							<filters>
@@ -228,6 +288,8 @@ under the License.
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
 									<mainClass>org.myorg.quickstart.StreamingJob</mainClass>
 								</transformer>
+								<!-- 合并 META-INF/services，否则 Table/Kafka 等 SPI 在 fat jar 里会失效 -->
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
 							</transformers>
 						</configuration>
 					</execution>
@@ -250,7 +312,7 @@ under the License.
 									<pluginExecutionFilter>
 										<groupId>org.apache.maven.plugins</groupId>
 										<artifactId>maven-shade-plugin</artifactId>
-										<versionRange>[3.1.1,)</versionRange>
+										<versionRange>[3.5.1,)</versionRange>
 										<goals>
 											<goal>shade</goal>
 										</goals>
@@ -263,7 +325,7 @@ under the License.
 									<pluginExecutionFilter>
 										<groupId>org.apache.maven.plugins</groupId>
 										<artifactId>maven-compiler-plugin</artifactId>
-										<versionRange>[3.1,)</versionRange>
+										<versionRange>[3.11.0,)</versionRange>
 										<goals>
 											<goal>testCompile</goal>
 											<goal>compile</goal>

@@ -1,7 +1,6 @@
 
 package org.myorg.quickstart.CoreConcepts07;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Time;
@@ -9,10 +8,10 @@ import org.apache.flink.api.java.DataSet;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.api.java.operators.DataSource;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.RestartStrategyOptions;
-import org.apache.flink.runtime.executiongraph.restart.RestartStrategy;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -53,7 +52,7 @@ public class BatchJob {
                 super.open(parameters);
                 //2：使用文件
                 File myFile = getRuntimeContext().getDistributedCache().getFile("distributedCache");
-                List<String> lines = FileUtils.readLines(myFile);
+                List<String> lines = Files.readAllLines(myFile.toPath(), StandardCharsets.UTF_8);
                 for (String line : lines) {
                     this.dataList.add(line);
                     System.err.println("分布式缓存为:" + line);

@@ -28,9 +28,9 @@ class StreamingDemo2 {
 
 
         DataStreamSource<Tuple3<Integer,Integer,Integer>> items = env.fromCollection(data);
-        //items.keyBy(0).max(2).printToErr();
+        //items.keyBy(value -> value.f0).max(2).printToErr();
 
-        SingleOutputStreamOperator<Tuple3<Integer, Integer, Integer>> reduce = items.keyBy(0).reduce(new ReduceFunction<Tuple3<Integer, Integer, Integer>>() {
+        SingleOutputStreamOperator<Tuple3<Integer, Integer, Integer>> reduce = items.keyBy(value -> value.f0).reduce(new ReduceFunction<Tuple3<Integer, Integer, Integer>>() {
             @Override
             public Tuple3<Integer,Integer,Integer> reduce(Tuple3<Integer, Integer, Integer> t1, Tuple3<Integer, Integer, Integer> t2) throws Exception {
                 Tuple3<Integer,Integer,Integer> newTuple = new Tuple3<>();

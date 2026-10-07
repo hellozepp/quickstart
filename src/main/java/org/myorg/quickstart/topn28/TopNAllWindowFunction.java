@@ -2,13 +2,12 @@ package org.myorg.quickstart.topn28;
 
 
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.streaming.api.scala.function.ProcessAllWindowFunction;
+import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
-import scala.collection.Iterable;
-import scala.collection.Iterator;
 
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -32,15 +31,17 @@ public class TopNAllWindowFunction extends ProcessAllWindowFunction<OrderDetail,
         });
 
         Iterator<OrderDetail> iterator = elements.iterator();
-        if(iterator.hasNext()){
-            treeMap.put(iterator.next().getPrice(),iterator.next());
-            if(treeMap.size() > 10){
-                treeMap.pollLastEntry();
+        while (iterator.hasNext()) {
+            OrderDetail orderDetail = iterator.next();
+            treeMap.put(orderDetail.getPrice(), orderDetail);
+            // 只保留价格最大的 size 条
+            if (treeMap.size() > size) {
+                treeMap.pollFirstEntry();
             }
         }
 
         for (Map.Entry<Double, OrderDetail> entry : treeMap.entrySet()) {
-            out.collect(Tuple2.of(entry.getKey(),entry.getValue()));
+            out.collect(Tuple2.of(entry.getKey(), entry.getValue()));
         }
 
 

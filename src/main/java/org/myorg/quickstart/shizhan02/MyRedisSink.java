@@ -2,27 +2,18 @@ package org.myorg.quickstart.shizhan02;
 
 
 import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.streaming.connectors.redis.common.mapper.RedisCommand;
-import org.apache.flink.streaming.connectors.redis.common.mapper.RedisCommandDescription;
-import org.apache.flink.streaming.connectors.redis.common.mapper.RedisMapper;
+import org.myorg.quickstart.RedisSink27.RedisWriter;
+import redis.clients.jedis.Jedis;
 
-public class MyRedisSink implements RedisMapper<Tuple3<String,String, Integer>>{
+public class MyRedisSink implements RedisWriter<Tuple3<String,String, Integer>>{
+
+    private static final String HASH_KEY = "flink_pv_uv";
 
     /**
-     * 设置redis数据类型
+     * 使用 HSET 命令写入：hash = flink_pv_uv, field = f1, value = f2
      */
     @Override
-    public RedisCommandDescription getCommandDescription() {
-        return new RedisCommandDescription(RedisCommand.HSET,"flink_pv_uv");
-    }
-
-    @Override
-    public String getKeyFromData(Tuple3<String, String, Integer> data) {
-        return data.f1;
-    }
-
-    @Override
-    public String getValueFromData(Tuple3<String, String, Integer> data) {
-        return data.f2.toString();
+    public void write(Jedis jedis, Tuple3<String, String, Integer> data) {
+        jedis.hset(HASH_KEY, data.f1, data.f2.toString());
     }
 }

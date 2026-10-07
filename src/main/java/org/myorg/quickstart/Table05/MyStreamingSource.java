@@ -3,19 +3,18 @@ package org.myorg.quickstart.Table05;
 
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.typeinfo.TypeHint;
-import org.apache.flink.api.common.typeinfo.TypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.java.tuple.Tuple4;
-import org.apache.flink.streaming.api.collector.selector.OutputSelector;
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.EnvironmentSettings;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.java.StreamTableEnvironment;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.types.Row;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +61,7 @@ public class MyStreamingSource implements SourceFunction<Item> {
 class StreamingDemo {
     public static void main(String[] args) throws Exception {
 
-        EnvironmentSettings bsSettings = EnvironmentSettings.newInstance().useBlinkPlanner().inStreamingMode().build();
+        EnvironmentSettings bsSettings = EnvironmentSettings.newInstance().inStreamingMode().build();
         StreamExecutionEnvironment bsEnv = StreamExecutionEnvironment.getExecutionEnvironment();
         StreamTableEnvironment bsTableEnv = StreamTableEnvironment.create(bsEnv, bsSettings);
 
@@ -73,41 +72,37 @@ class StreamingDemo {
             }
         });
 
-        DataStream<Item> evenSelect = source.split(new OutputSelector<Item>() {
+        // Flink 1.15 移除了 DataStream#split(OutputSelector)，这里用 filter 实现同样的分流
+        DataStream<Item> evenSelect = source.filter(new FilterFunction<Item>() {
             @Override
-            public Iterable<String> select(Item value) {
-                List<String> output = new ArrayList<>();
-                if (value.getId() % 2 == 0) {
-                    output.add("even");
-                } else {
-                    output.add("odd");
-                }
-                return output;
+            public boolean filter(Item value) throws Exception {
+                return value.getId() % 2 == 0;
             }
-        }).select("even");
+        });
 
-        DataStream<Item> oddSelect = source.split(new OutputSelector<Item>() {
+        DataStream<Item> oddSelect = source.filter(new FilterFunction<Item>() {
             @Override
-            public Iterable<String> select(Item value) {
-                List<String> output = new ArrayList<>();
-                if (value.getId() % 2 == 0) {
-                    output.add("even");
-                } else {
-                    output.add("odd");
-                }
-                return output;
+            public boolean filter(Item value) throws Exception {
+                return value.getId() % 2 != 0;
             }
-        }).select("odd");
+        });
 
 
-        bsTableEnv.createTemporaryView("evenTable", evenSelect, "name,id");
-        bsTableEnv.createTemporaryView("oddTable", oddSelect, "name,id");
+        // Flink 1.15 推荐用 Schema 描述字段（字符串形式的字段名重载已弃用）
+        Schema itemSchema = Schema.newBuilder()
+                .column("name", DataTypes.STRING())
+                .column("id", DataTypes.INT())
+                .build();
+
+        bsTableEnv.createTemporaryView("evenTable", evenSelect, itemSchema);
+        bsTableEnv.createTemporaryView("oddTable", oddSelect, itemSchema);
 
         Table queryTable = bsTableEnv.sqlQuery("select a.id,a.name,b.id,b.name from evenTable as a join oddTable as b on a.name = b.name");
 
         queryTable.printSchema();
 
-        bsTableEnv.toRetractStream(queryTable, TypeInformation.of(new TypeHint<Tuple4<Integer,String,Integer,String>>(){})).print();
+        // toRetractStream/toDataStream 都已弃用，1.15 推荐用 toChangelogStream
+        bsTableEnv.toChangelogStream(queryTable).print();
 
         bsEnv.execute("streaming sql job");
     }

@@ -27,12 +27,11 @@ import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.state.filesystem.FsStateBackend;
-import org.apache.flink.runtime.state.memory.MemoryStateBackend;
+import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
+import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.Collector;
 
-import static org.apache.flink.runtime.state.memory.MemoryStateBackend.DEFAULT_MAX_STATE_SIZE;
 
 public class BatchJob1 {
 
@@ -41,10 +40,12 @@ public class BatchJob1 {
 
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        env.setStateBackend(new FsStateBackend("hdfs://namenode:40010/flink/checkpoints", false));
+        // FsStateBackend = HashMapStateBackend + FileSystemCheckpointStorage（Flink 1.15 的组合写法）
+        env.setStateBackend(new HashMapStateBackend());
+        env.getCheckpointConfig().setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://namenode:40010/flink/checkpoints"));
 
 		env.fromElements(Tuple2.of(1L, 3L), Tuple2.of(1L, 5L), Tuple2.of(1L, 7L), Tuple2.of(1L, 5L), Tuple2.of(1L, 2L))
-				.keyBy(0)
+				.keyBy(value -> value.f0)
 				.flatMap(new CountWindowAverage())
 				.printToErr();
 

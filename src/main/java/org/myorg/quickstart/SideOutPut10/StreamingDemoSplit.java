@@ -1,16 +1,20 @@
 package org.myorg.quickstart.SideOutPut10;
 
 
+import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.streaming.api.collector.selector.OutputSelector;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
-import org.apache.flink.streaming.api.datastream.SplitStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
 import java.util.ArrayList;
 import java.util.List;
 
 
+/**
+ * Flink 1.15 已经删除了 DataStream#split(OutputSelector) 和 SplitStream，
+ * 官方推荐用两次 filter（或侧输出流，见 StreamingDemoSideOutPut）实现分流。
+ */
 class StreamingDemoSplit {
     public static void main(String[] args) throws Exception {
 
@@ -29,22 +33,22 @@ class StreamingDemoSplit {
 
         DataStreamSource<Tuple3<Integer,Integer,Integer>> items = env.fromCollection(data);
 
-
-        SplitStream<Tuple3<Integer, Integer, Integer>> splitStream = items.split(new OutputSelector<Tuple3<Integer, Integer, Integer>>() {
+        DataStream<Tuple3<Integer, Integer, Integer>> zeroStream = items.filter(new FilterFunction<Tuple3<Integer, Integer, Integer>>() {
             @Override
-            public Iterable<String> select(Tuple3<Integer, Integer, Integer> value) {
-                List<String> tags = new ArrayList<>();
-                if (value.f0 == 0) {
-                    tags.add("zeroStream");
-                } else if (value.f0 == 1) {
-                    tags.add("oneStream");
-                }
-                return tags;
+            public boolean filter(Tuple3<Integer, Integer, Integer> value) throws Exception {
+                return value.f0 == 0;
             }
         });
 
-        splitStream.select("zeroStream").print();
-        splitStream.select("oneStream").printToErr();
+        DataStream<Tuple3<Integer, Integer, Integer>> oneStream = items.filter(new FilterFunction<Tuple3<Integer, Integer, Integer>>() {
+            @Override
+            public boolean filter(Tuple3<Integer, Integer, Integer> value) throws Exception {
+                return value.f0 == 1;
+            }
+        });
+
+        zeroStream.print();
+        oneStream.printToErr();
 
         //打印结果
         String jobName = "user defined streaming source";

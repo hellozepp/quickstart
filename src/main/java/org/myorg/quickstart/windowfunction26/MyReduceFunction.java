@@ -12,7 +12,7 @@ public class MyReduceFunction {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         DataStream<Tuple2<String, Integer>> input = env.fromElements(courses);
-        DataStream<Tuple2<String, Integer>> total = input.keyBy(0).reduce(new ReduceFunction<Tuple2<String, Integer>>() {
+        DataStream<Tuple2<String, Integer>> total = input.keyBy(value -> value.f0).reduce(new ReduceFunction<Tuple2<String, Integer>>() {
             @Override
             public Tuple2<String, Integer> reduce(Tuple2<String, Integer> value1, Tuple2<String, Integer> value2) throws Exception {
                 return new Tuple2<>(value1.f0, value1.f1 + value2.f1);

@@ -26,7 +26,7 @@ public class StreamingCep {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        DataStreamSource source = env.fromElements(
+        DataStreamSource<Tuple3<String, String, Long>> source = env.fromElements(
                 //浏览记录
                 Tuple3.of("Marry", "外套", 1L),
 
@@ -74,7 +74,7 @@ public class StreamingCep {
 
 
 
-        KeyedStream keyedStream = source.keyBy(0);
+        KeyedStream keyedStream = source.keyBy(value -> value.f0);
         PatternStream patternStream = CEP.pattern(keyedStream, pattern);
 
         SingleOutputStreamOperator matchStream = patternStream.select(new PatternSelectFunction<Tuple3<String, String, Long>, String>() {

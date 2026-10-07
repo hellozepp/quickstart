@@ -1,10 +1,10 @@
 package org.myorg.quickstart.Dim19;
 
 import com.alibaba.fastjson.JSONObject;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.stumbleupon.async.Callback;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.shaded.guava18.com.google.common.cache.Cache;
-import org.apache.flink.shaded.guava18.com.google.common.cache.CacheBuilder;
 import org.apache.flink.streaming.api.functions.async.ResultFuture;
 import org.apache.flink.streaming.api.functions.async.RichAsyncFunction;
 import org.hbase.async.GetRequest;

@@ -5,6 +5,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 
 import java.util.ArrayList;
@@ -66,7 +67,7 @@ class StreamingDemoWithMyNoPralalleSource {
         });
 
         //每2秒钟处理一次数据 1 2 3 4 5 6 7 8 9 ...
-        DataStream<String> sum = num.timeWindowAll(Time.seconds(2)).sum(0);
+        DataStream<String> sum = num.windowAll(TumblingProcessingTimeWindows.of(Time.seconds(2))).sum(0);
         //打印结果
         sum.print().setParallelism(1);
         String jobName = StreamingDemoWithMyNoPralalleSource.class.getSimpleName();

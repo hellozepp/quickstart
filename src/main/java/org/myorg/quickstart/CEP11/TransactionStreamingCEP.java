@@ -1,5 +1,6 @@
 package org.myorg.quickstart.CEP11;
 
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.cep.CEP;
 import org.apache.flink.cep.PatternStream;
@@ -7,16 +8,13 @@ import org.apache.flink.cep.functions.PatternProcessFunction;
 import org.apache.flink.cep.pattern.Pattern;
 import org.apache.flink.cep.pattern.conditions.IterativeCondition;
 import org.apache.flink.cep.pattern.conditions.SimpleCondition;
-import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
-import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 
-import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -26,7 +24,6 @@ public class TransactionStreamingCEP {
 
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         DataStream<TransactionEvent> source = env.fromElements(
                 new TransactionEvent("100XX", 0.0D, 1597905234000L),
@@ -39,7 +36,8 @@ public class TransactionStreamingCEP {
                 new TransactionEvent("101XX", 100.0D, 1597905241000L)
 
 
-        ).assignTimestampsAndWatermarks(new BoundedOutOfOrdernessGenerator()).keyBy(new KeySelector<TransactionEvent, Object>() {
+        ).assignTimestampsAndWatermarks(WatermarkStrategy.<TransactionEvent>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                .withTimestampAssigner((element, recordTimestamp) -> element.getTimeStamp())).keyBy(new KeySelector<TransactionEvent, Object>() {
             @Override
             public Object getKey(TransactionEvent value) throws Exception {
                 return value.getAccout();
@@ -75,26 +73,6 @@ public class TransactionStreamingCEP {
 
     }
 
-    private static class BoundedOutOfOrdernessGenerator implements AssignerWithPeriodicWatermarks<TransactionEvent>{
-
-        private final long maxOutOfOrderness = 5000L;
-        private long currentTimeStamp;
-
-        @Nullable
-        @Override
-        public Watermark getCurrentWatermark() {
-            return new Watermark(currentTimeStamp - maxOutOfOrderness);
-        }
-
-        @Override
-        public long extractTimestamp(TransactionEvent element, long previousElementTimestamp) {
-
-            Long timeStamp = element.getTimeStamp();
-            currentTimeStamp = Math.max(timeStamp, currentTimeStamp);
-//            System.err.println(element.toString() + ",EventTime:" + timeStamp + ",watermark:" + (currentTimeStamp - maxOutOfOrderness));
-            return timeStamp;
-        }
-    }
 
 
 }

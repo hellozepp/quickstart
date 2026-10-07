@@ -7,63 +7,48 @@ import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.CheckpointingMode;
-import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
 import org.apache.flink.streaming.api.functions.windowing.ProcessAllWindowFunction;
-import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
-import org.apache.flink.streaming.connectors.redis.RedisSink;
-import org.apache.flink.streaming.connectors.redis.common.config.FlinkJedisPoolConfig;
-import org.apache.flink.streaming.connectors.redis.common.mapper.RedisCommand;
-import org.apache.flink.streaming.connectors.redis.common.mapper.RedisCommandDescription;
-import org.apache.flink.streaming.connectors.redis.common.mapper.RedisMapper;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.myorg.quickstart.RedisSink27.RedisSinkV2;
 import org.apache.flink.util.Collector;
 import org.myorg.quickstart.RedisSink27.RedisSink02;
 
+import java.time.Duration;
 import java.util.*;
 
 public class TopN {
 
     public static void main(String[] args) throws Exception{
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
         env.enableCheckpointing(60 * 1000, CheckpointingMode.EXACTLY_ONCE);
         env.getCheckpointConfig().setCheckpointTimeout(30 * 1000);
 
-        Properties properties = new Properties();
-        properties.setProperty("bootstrap.servers", "localhost:9092");
+        // Flink 1.15 的新数据源 API：KafkaSource（FlinkKafkaConsumer 已弃用）
+        KafkaSource<String> source = KafkaSource.<String>builder()
+                .setBootstrapServers("localhost:9092")
+                .setTopics("test")
+                .setGroupId("topn-group")
+                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setValueOnlyDeserializer(new SimpleStringSchema())
+                .build();
 
-        FlinkKafkaConsumer<String> consumer = new FlinkKafkaConsumer<>("test", new SimpleStringSchema(), properties);
-        //从最早开始消费
-        consumer.setStartFromEarliest();
-
-        DataStream<String> stream = env
-                .addSource(consumer);
+        DataStream<String> stream = env.fromSource(source, WatermarkStrategy.noWatermarks(), "kafka-source");
 
         DataStream<OrderDetail> orderStream = stream.map(message -> JSON.parseObject(message, OrderDetail.class));
 
-        DataStream<OrderDetail> dataStream = orderStream.assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<OrderDetail>() {
-
-            private Long currentTimeStamp = 0L;
-            //设置允许乱序时间
-            private Long maxOutOfOrderness = 3000L;
-            @Override
-            public Watermark getCurrentWatermark() {
-
-                return new Watermark(currentTimeStamp - maxOutOfOrderness);
-            }
-            @Override
-            public long extractTimestamp(OrderDetail element, long previousElementTimestamp) {
-                return element.getTimeStamp();
-            }
-        });
+        // 事件时间 + 水印：Flink 1.12 之后统一用 WatermarkStrategy（旧的 AssignerWithPeriodicWatermarks 已弃用）
+        DataStream<OrderDetail> dataStream = orderStream.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<OrderDetail>forBoundedOutOfOrderness(Duration.ofSeconds(3))
+                        .withTimestampAssigner((element, recordTimestamp) -> element.getTimeStamp()));
 
         DataStream<OrderDetail> reduce = dataStream
                 .keyBy((KeySelector<OrderDetail, Object>) value -> value.getUserId())
@@ -104,25 +89,8 @@ public class TopN {
                              }
                          }
                 );
-        FlinkJedisPoolConfig conf = new FlinkJedisPoolConfig.Builder().setHost("localhost").setPort(6379).build();
-        process.addSink(new RedisSink<>(conf, new RedisMapper<Tuple2<Double, OrderDetail>>() {
-
-            private final String TOPN_PREFIX = "TOPN:";
-            @Override
-            public RedisCommandDescription getCommandDescription() {
-                return new RedisCommandDescription(RedisCommand.HSET,TOPN_PREFIX);
-            }
-
-            @Override
-            public String getKeyFromData(Tuple2<Double, OrderDetail> data) {
-                return String.valueOf(data.f0);
-            }
-
-            @Override
-            public String getValueFromData(Tuple2<Double, OrderDetail> data) {
-                return String.valueOf(data.f1.toString());
-            }
-        }));
+        process.sinkTo(new RedisSinkV2<>("localhost", 6379,
+                (jedis, data) -> jedis.hset("TOPN:", String.valueOf(data.f0), data.f1.toString())));
 
         env.execute("execute topn");
 

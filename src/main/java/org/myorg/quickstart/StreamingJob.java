@@ -22,6 +22,7 @@ import org.apache.flink.api.common.functions.FlatMapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.SlidingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 
@@ -45,8 +46,8 @@ public class StreamingJob {
                         }
                     }
                 })
-                .keyBy("word")
-                .timeWindow(Time.seconds(5), Time.seconds(1))
+                .keyBy(value -> value.word)
+                .window(SlidingProcessingTimeWindows.of(Time.seconds(5), Time.seconds(1)))
                 .reduce(new ReduceFunction<WordWithCount>() {
                     @Override
                     public WordWithCount reduce(WordWithCount a, WordWithCount b) {
